@@ -1,0 +1,1236 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Análise de Falhas Recorrentes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#E4E9E6;
+    --surface:#FFFFFF;
+    --surface-sunken:#D7DED8;
+    --border:#B9C4BC;
+    --ink:#1B2420;
+    --ink-muted:#5C6B62;
+    --ink-faint:#8B978F;
+    --accent:#C1531F;
+    --accent-ink:#7A3512;
+    --accent-soft:#F1DAC8;
+    --sev-baixa:#4C7A66;
+    --sev-media:#C08A2E;
+    --sev-alta:#C1531F;
+    --sev-critica:#9B2B2B;
+    --status-aberta:#C1531F;
+    --status-andamento:#2E6E7A;
+    --status-resolvida:#4C7A66;
+    --radius:6px;
+    --font-sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#161C18;
+      --surface:#1F2620;
+      --surface-sunken:#12160F;
+      --border:#38453B;
+      --ink:#E8ECE9;
+      --ink-muted:#A7B3AC;
+      --ink-faint:#6D786F;
+      --accent:#E58452;
+      --accent-ink:#F4C1A1;
+      --accent-soft:#3B291D;
+      --sev-baixa:#6AA189;
+      --sev-media:#D6A94C;
+      --sev-alta:#E58452;
+      --sev-critica:#C0554F;
+      --status-aberta:#E58452;
+      --status-andamento:#5AA3B0;
+      --status-resolvida:#6AA189;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#161C18;
+    --surface:#1F2620;
+    --surface-sunken:#12160F;
+    --border:#38453B;
+    --ink:#E8ECE9;
+    --ink-muted:#A7B3AC;
+    --ink-faint:#6D786F;
+    --accent:#E58452;
+    --accent-ink:#F4C1A1;
+    --accent-soft:#3B291D;
+    --sev-baixa:#6AA189;
+    --sev-media:#D6A94C;
+    --sev-alta:#E58452;
+    --sev-critica:#C0554F;
+    --status-aberta:#E58452;
+    --status-andamento:#5AA3B0;
+    --status-resolvida:#6AA189;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-sans);
+    font-size:14.5px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  h1,h2,h3{margin:0;font-weight:600;}
+  p{margin:0;}
+  .mono{font-family:var(--font-mono);}
+
+  .app-shell{
+    display:grid;
+    grid-template-columns:232px 1fr;
+    min-height:100vh;
+  }
+  .sidebar{
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    padding:20px 16px;
+    display:flex;
+    flex-direction:column;
+    position:sticky;
+    top:0;
+    height:100vh;
+  }
+  .brand{margin-bottom:24px;}
+  .brand-mark{display:flex;align-items:center;gap:9px;}
+  .brand-glyph{
+    width:26px;height:26px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .brand-name{font-size:16px;font-weight:700;letter-spacing:-0.01em;}
+  .brand-tag{
+    margin-top:4px;
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--ink-muted);
+  }
+  .nav-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;flex:1;}
+  .nav-item{
+    display:flex;align-items:center;gap:10px;
+    padding:9px 10px;
+    border-radius:var(--radius);
+    cursor:pointer;
+    color:var(--ink-muted);
+    font-size:13.5px;
+    font-weight:500;
+    border:1px solid transparent;
+    transition:background .12s ease,color .12s ease;
+  }
+  .nav-item svg{flex:none;opacity:.85;}
+  .nav-item:hover{background:var(--surface-sunken);color:var(--ink);}
+  .nav-item.active{
+    background:var(--accent-soft);
+    color:var(--accent-ink);
+    border-color:var(--accent);
+  }
+  .nav-count{
+    margin-left:auto;
+    font-family:var(--font-mono);
+    font-size:11px;
+    color:var(--ink-faint);
+  }
+  .nav-item.active .nav-count{color:var(--accent-ink);}
+  .storage-status{
+    margin-top:16px;
+    padding-top:14px;
+    border-top:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    gap:7px;
+    font-size:11.5px;
+    color:var(--ink-faint);
+    font-family:var(--font-mono);
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-faint);flex:none;}
+  .dot.ok{background:var(--sev-baixa);}
+  .dot.local{background:var(--sev-media);}
+
+  .main{min-width:0;}
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px 28px;
+    border-bottom:1px solid var(--border);
+    background:var(--surface);
+  }
+  .topbar h1{font-size:18px;}
+  .topbar-sub{font-size:12.5px;color:var(--ink-muted);margin-top:2px;}
+  .content{padding:24px 28px 60px;max-width:1180px;}
+
+  .grid-paper{
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size:24px 24px;
+    background-color:var(--surface);
+    opacity:1;
+  }
+
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px;}
+  .stat-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:14px 16px;
+  }
+  .stat-label{font-size:12px;color:var(--ink-muted);}
+  .stat-value{font-family:var(--font-mono);font-size:26px;font-weight:600;margin-top:4px;}
+  .stat-value.accent{color:var(--accent-ink);}
+
+  .two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start;}
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px;
+  }
+  .card h2{font-size:14.5px;margin-bottom:2px;}
+  .card-sub{font-size:12px;color:var(--ink-muted);margin-bottom:14px;}
+
+  .top-recur-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;}
+  .top-recur-item{display:flex;align-items:baseline;gap:10px;}
+  .top-recur-rank{font-family:var(--font-mono);color:var(--ink-faint);font-size:12px;width:14px;}
+  .top-recur-name{flex:1;font-size:13.5px;font-weight:500;}
+  .top-recur-count{font-family:var(--font-mono);font-size:12px;color:var(--accent-ink);background:var(--accent-soft);padding:1px 7px;border-radius:10px;}
+
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 14px;
+    border-radius:var(--radius);
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--ink);
+    cursor:pointer;
+    font-size:13px;
+    font-weight:500;
+  }
+  .btn:hover{background:var(--surface-sunken);}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent-ink);border-color:var(--accent-ink);}
+  .btn-ghost{background:transparent;border-color:transparent;color:var(--ink-muted);}
+  .btn-ghost:hover{background:var(--surface-sunken);color:var(--ink);}
+  .btn-danger{color:var(--sev-critica);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn-sm{padding:5px 10px;font-size:12px;}
+
+  .form-group{margin-bottom:16px;}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  label{display:block;font-size:12.5px;font-weight:600;margin-bottom:6px;color:var(--ink-muted);}
+  .hint{font-size:11.5px;color:var(--ink-faint);margin-top:5px;}
+  input[type=text],input[type=date],select,textarea{
+    width:100%;
+    padding:9px 11px;
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    background:var(--surface);
+    color:var(--ink);
+  }
+  textarea{resize:vertical;min-height:76px;}
+  input[type=text]:focus,input[type=date]:focus,select:focus,textarea:focus{
+    border-color:var(--accent);
+  }
+  .field-error{border-color:var(--sev-critica) !important;}
+  .error-text{color:var(--sev-critica);font-size:11.5px;margin-top:5px;}
+
+  .badge{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:2px 9px;
+    border-radius:10px;
+    font-size:11.5px;
+    font-weight:600;
+    font-family:var(--font-mono);
+    border:1px solid transparent;
+  }
+  .badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .badge-baixa{color:var(--sev-baixa);background:color-mix(in srgb, var(--sev-baixa) 15%, transparent);}
+  .badge-media{color:var(--sev-media);background:color-mix(in srgb, var(--sev-media) 15%, transparent);}
+  .badge-alta{color:var(--sev-alta);background:color-mix(in srgb, var(--sev-alta) 15%, transparent);}
+  .badge-critica{color:var(--sev-critica);background:color-mix(in srgb, var(--sev-critica) 15%, transparent);}
+  .badge-aberta{color:var(--status-aberta);background:color-mix(in srgb, var(--status-aberta) 15%, transparent);}
+  .badge-andamento{color:var(--status-andamento);background:color-mix(in srgb, var(--status-andamento) 15%, transparent);}
+  .badge-resolvida{color:var(--status-resolvida);background:color-mix(in srgb, var(--status-resolvida) 15%, transparent);}
+
+  .wizard-progress{display:flex;gap:6px;margin-bottom:20px;}
+  .wizard-progress span{
+    height:4px;flex:1;border-radius:2px;background:var(--surface-sunken);
+  }
+  .wizard-progress span.done{background:var(--accent);}
+  .wizard-step-label{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-faint);margin-bottom:6px;}
+  .wizard-actions{display:flex;justify-content:space-between;margin-top:22px;}
+  .why-block{
+    border-left:2px solid var(--border);
+    padding-left:14px;
+    margin-bottom:16px;
+  }
+  .why-num{font-family:var(--font-mono);font-size:11.5px;color:var(--accent-ink);margin-bottom:4px;}
+  .review-grid{display:grid;grid-template-columns:150px 1fr;gap:8px 14px;font-size:13px;}
+  .review-grid dt{color:var(--ink-muted);}
+  .review-grid dd{margin:0;}
+
+  .filter-bar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:center;}
+  .filter-bar select, .filter-bar input{width:auto;min-width:130px;}
+  .filter-bar input[type=text]{min-width:200px;}
+  .filter-count{font-size:12px;color:var(--ink-muted);margin-left:auto;}
+
+  .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);}
+  table{width:100%;border-collapse:collapse;background:var(--surface);}
+  th{
+    text-align:left;
+    font-size:11.5px;
+    color:var(--ink-muted);
+    font-weight:600;
+    padding:10px 12px;
+    border-bottom:1px solid var(--border);
+    white-space:nowrap;
+  }
+  td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  tr.row-clickable{cursor:pointer;}
+  tr.row-clickable:hover{background:var(--surface-sunken);}
+  .detail-row td{background:var(--surface-sunken);}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:6px 2px;}
+  .detail-grid h4{font-size:11.5px;color:var(--ink-muted);margin:0 0 4px;font-weight:600;}
+  .detail-grid p{font-size:13px;}
+  .why-chain{list-style:none;margin:0;padding:0;font-size:12.5px;}
+  .why-chain li{padding:3px 0;border-bottom:1px dashed var(--border);}
+  .why-chain li:last-child{border-bottom:none;font-weight:600;color:var(--accent-ink);}
+
+  .recur-grid{display:flex;flex-direction:column;gap:10px;}
+  .recur-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px 16px;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;
+  }
+  .recur-title{font-weight:600;font-size:14px;}
+  .recur-meta{font-size:12px;color:var(--ink-muted);margin-top:3px;}
+  .recur-count-badge{
+    font-family:var(--font-mono);font-size:20px;font-weight:600;color:var(--accent-ink);
+    text-align:right;
+  }
+  .recur-count-label{font-size:10.5px;color:var(--ink-faint);text-align:right;font-family:var(--font-mono);}
+
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;}
+  .chart-wrap{position:relative;height:320px;}
+
+  .fishbone-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;overflow-x:auto;}
+  .fishbone-wrap svg{width:100%;min-width:760px;height:auto;display:block;}
+
+  .kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .kanban-col{background:var(--surface-sunken);border-radius:var(--radius);padding:12px;min-height:120px;}
+  .kanban-col h3{font-size:12.5px;margin-bottom:10px;display:flex;align-items:center;gap:7px;}
+  .kanban-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:11px 12px;margin-bottom:9px;
+  }
+  .kanban-card-title{font-size:13px;font-weight:600;}
+  .kanban-card-action{font-size:12px;color:var(--ink-muted);margin-top:4px;}
+  .kanban-card-meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:11.5px;color:var(--ink-faint);font-family:var(--font-mono);}
+  .kanban-card-meta.overdue{color:var(--sev-critica);}
+  .kanban-card-actions{display:flex;gap:6px;margin-top:9px;}
+
+  .empty-state{
+    text-align:center;padding:48px 20px;color:var(--ink-muted);
+    border:1px dashed var(--border);border-radius:var(--radius);
+  }
+  .empty-state p{margin-bottom:14px;font-size:13.5px;}
+
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--bg);
+    padding:10px 18px;border-radius:var(--radius);
+    font-size:13px;
+    opacity:0;pointer-events:none;
+    transition:opacity .25s ease, transform .25s ease;
+    z-index:50;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+  @media (max-width:820px){
+    .app-shell{grid-template-columns:1fr;}
+    .sidebar{
+      position:sticky;top:0;height:auto;
+      flex-direction:row;align-items:center;
+      overflow-x:auto;padding:12px 14px;gap:14px;z-index:10;
+    }
+    .brand{margin-bottom:0;}
+    .brand-tag{display:none;}
+    .nav-list{flex-direction:row;flex:none;}
+    .storage-status{display:none;}
+    .content{padding:18px 16px 48px;}
+    .stat-grid{grid-template-columns:1fr 1fr;}
+    .two-col{grid-template-columns:1fr;}
+    .form-row{grid-template-columns:1fr;}
+    .kanban{grid-template-columns:1fr;}
+    .detail-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <span class="brand-glyph">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="9" stroke="var(--accent)" stroke-width="1.6"/>
+            <path d="M12 7v5l3.2 2" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="brand-name">Sistema RCA</span>
+      </div>
+      <div class="brand-tag">análise de falhas recorrentes</div>
+    </div>
+    <ul class="nav-list" id="nav-list"></ul>
+    <div class="storage-status" id="storage-status">
+      <span class="dot"></span><span>verificando armazenamento…</span>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="topbar-title">Painel</h1>
+        <div class="topbar-sub" id="topbar-sub"></div>
+      </div>
+      <div id="topbar-action"></div>
+    </div>
+    <div class="content" id="content"></div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Constantes de domínio ----------
+  var CATEGORIAS = ["Método","Mão de obra","Máquina","Material","Meio ambiente","Medição"];
+  var CATEGORIA_DESC = {
+    "Método":"Procedimento, instrução de trabalho ou processo seguido",
+    "Mão de obra":"Treinamento, atenção, competência de quem operou",
+    "Máquina":"Equipamento, ferramenta ou componente físico",
+    "Material":"Insumo, peça ou matéria-prima utilizada",
+    "Meio ambiente":"Condições do ambiente: temperatura, umidade, layout",
+    "Medição":"Instrumento, calibração ou critério de aferição"
+  };
+  var SEVERIDADES = ["Baixa","Média","Alta","Crítica"];
+  var STATUSES = ["Aberta","Em andamento","Resolvida"];
+  var TABS = [
+    {id:"painel", label:"Painel", icon:iconGauge},
+    {id:"registrar", label:"Registrar falha", icon:iconPlus},
+    {id:"falhas", label:"Falhas registradas", icon:iconList},
+    {id:"recorrencias", label:"Recorrências", icon:iconRepeat},
+    {id:"pareto", label:"Pareto", icon:iconBars},
+    {id:"ishikawa", label:"Diagrama de Ishikawa", icon:iconBranch},
+    {id:"acoes", label:"Ações corretivas", icon:iconCheck}
+  ];
+
+  // ---------- Estado ----------
+  var state = {
+    falhas: [],
+    dataLoaded: false,
+    dbReady: false,
+    fallback: false,
+    currentTab: "painel",
+    expandedId: null,
+    filters: { status:"", categoria:"", severidade:"", q:"" },
+    wizard: freshWizard(),
+    wizardStep: 1
+  };
+  var dbNamespace = null;
+  var downloadsNamespace = null;
+  var chartInstances = {};
+
+  function freshWizard(){
+    return {
+      tipoFalha:"", equipamento:"", data: todayISO(), severidade:"Média",
+      descricao:"",
+      porques:["","","","",""],
+      categoria:"Método", causaRaiz:"",
+      acaoCorretiva:"", responsavel:"", prazo:"", status:"Aberta"
+    };
+  }
+
+  // ---------- Utilidades ----------
+  function escapeHtml(str){
+    return String(str==null?"":str).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function formatDateBR(iso){
+    if(!iso) return "—";
+    var p = iso.split("-");
+    if(p.length!==3) return iso;
+    return p[2]+"/"+p[1]+"/"+p[0];
+  }
+  function slugCategoria(c){
+    return {"Método":"metodo","Mão de obra":"maodeobra","Máquina":"maquina","Material":"material","Meio ambiente":"meioambiente","Medição":"medicao"}[c] || "metodo";
+  }
+  function sevClass(s){ return "badge-"+({"Baixa":"baixa","Média":"media","Alta":"alta","Crítica":"critica"}[s]||"baixa"); }
+  function statusClass(s){ return "badge-"+({"Aberta":"aberta","Em andamento":"andamento","Resolvida":"resolvida"}[s]||"aberta"); }
+  function normKey(s){ return String(s||"").trim().toLowerCase(); }
+  function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+  function showToast(msg){
+    var t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(showToast._tm);
+    showToast._tm = setTimeout(function(){ t.classList.remove("show"); }, 2600);
+  }
+  function prefersReducedMotion(){
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+  function animateNumber(el, to){
+    if(prefersReducedMotion() || to===0){ el.textContent = to; return; }
+    var from = 0, start = null, dur = 550;
+    function step(ts){
+      if(start===null) start = ts;
+      var p = Math.min(1, (ts-start)/dur);
+      var eased = 1 - Math.pow(1-p, 3);
+      el.textContent = Math.round(from + (to-from)*eased);
+      if(p<1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ---------- Ícones (SVG inline, sem dependências externas) ----------
+  function iconGauge(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 15a8 8 0 1 1 16 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 15l4-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'; }
+  function iconPlus(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6"/><path d="M12 8.5v7M8.5 12h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'; }
+  function iconList(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M8 7h11M8 12h11M8 17h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="4.5" cy="7" r="1.1" fill="currentColor"/><circle cx="4.5" cy="12" r="1.1" fill="currentColor"/><circle cx="4.5" cy="17" r="1.1" fill="currentColor"/></svg>'; }
+  function iconRepeat(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0 1 13.5-5.8L20 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M20 12a8 8 0 0 1-13.5 5.8L4 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M17 4v4h-4M7 20v-4h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+  function iconBars(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 19V11M12 19V5M18 19v-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'; }
+  function iconBranch(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M9 6l-5 6 5 6M14 6l5 6-5 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+  function iconCheck(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="4.5" y="4.5" width="15" height="15" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 12.5l2.3 2.3L16 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+
+  // ---------- Armazenamento (db, com fallback local) ----------
+  function initStorage(){
+    if(!(window.claude && window.claude.use)){
+      enterFallback();
+      return;
+    }
+    window.claude.use("db").then(function(ns){
+      if(!ns){ enterFallback(); return; }
+      dbNamespace = ns;
+      state.dbReady = true;
+      updateStorageBadge();
+      subscribeFalhas();
+    }).catch(function(){ enterFallback(); });
+
+    window.claude.use("downloads").then(function(ns){ downloadsNamespace = ns; }).catch(function(){});
+  }
+  function enterFallback(){
+    state.fallback = true;
+    updateStorageBadge();
+    try{
+      var raw = localStorage.getItem("rca_falhas_v1");
+      state.falhas = raw ? JSON.parse(raw) : [];
+    }catch(e){ state.falhas = []; }
+    state.dataLoaded = true;
+    render();
+  }
+  function persistFallback(){
+    try{ localStorage.setItem("rca_falhas_v1", JSON.stringify(state.falhas)); }catch(e){}
+  }
+  function subscribeFalhas(){
+    var col = dbNamespace.collection("falhas").orderBy("createdAt","desc").limit(1000);
+    col.onSnapshot(function(snap){
+      state.falhas = snap.docs.map(function(d){
+        var data = d.data() || {};
+        data.id = d.id;
+        return data;
+      });
+      state.dataLoaded = true;
+      render();
+    }, function(err){
+      console.error("db onSnapshot error", err);
+      if(!state.dataLoaded){ enterFallback(); }
+    });
+  }
+  function updateStorageBadge(){
+    var el = document.getElementById("storage-status");
+    if(!el) return;
+    if(state.dbReady){
+      el.innerHTML = '<span class="dot ok"></span><span>sincronizado</span>';
+    } else if(state.fallback){
+      el.innerHTML = '<span class="dot local"></span><span>salvo neste navegador</span>';
+    } else {
+      el.innerHTML = '<span class="dot"></span><span>verificando armazenamento…</span>';
+    }
+  }
+
+  function salvarFalha(record){
+    record.createdAt = Date.now();
+    if(state.dbReady && dbNamespace){
+      dbNamespace.collection("falhas").add(record).then(function(){
+        showToast("Falha registrada.");
+      }).catch(function(e){
+        console.error(e);
+        showToast("Não foi possível salvar. Tente novamente.");
+      });
+    } else {
+      record.id = "local-"+record.createdAt+"-"+Math.random().toString(36).slice(2,7);
+      state.falhas.unshift(record);
+      persistFallback();
+      showToast("Falha registrada.");
+      render();
+    }
+  }
+  function atualizarFalha(id, patch){
+    if(state.dbReady && dbNamespace){
+      dbNamespace.doc("falhas/"+id).update(patch).catch(function(e){
+        console.error(e);
+        showToast("Não foi possível atualizar.");
+      });
+    } else {
+      var idx = state.falhas.findIndex(function(f){ return f.id===id; });
+      if(idx>=0){
+        for(var k in patch){ state.falhas[idx][k] = patch[k]; }
+        persistFallback();
+        render();
+      }
+    }
+  }
+  function excluirFalha(id){
+    if(state.dbReady && dbNamespace){
+      dbNamespace.doc("falhas/"+id).delete().catch(function(e){
+        console.error(e);
+        showToast("Não foi possível excluir.");
+      });
+    } else {
+      state.falhas = state.falhas.filter(function(f){ return f.id!==id; });
+      persistFallback();
+      render();
+    }
+  }
+
+  // ---------- Cálculos de análise ----------
+  function computeRecurrenceGroups(){
+    var map = {};
+    state.falhas.forEach(function(f){
+      var key = normKey(f.tipoFalha);
+      if(!key) return;
+      if(!map[key]) map[key] = { nome:f.tipoFalha, itens:[] };
+      map[key].itens.push(f);
+    });
+    var groups = Object.keys(map).map(function(k){
+      var g = map[k];
+      var datas = g.itens.map(function(i){ return i.data; }).filter(Boolean).sort();
+      var equipamentos = uniq(g.itens.map(function(i){ return i.equipamento; }).filter(Boolean));
+      var categorias = {};
+      g.itens.forEach(function(i){ categorias[i.categoria] = (categorias[i.categoria]||0)+1; });
+      var categoriaDominante = Object.keys(categorias).sort(function(a,b){ return categorias[b]-categorias[a]; })[0];
+      var abertas = g.itens.filter(function(i){ return i.status!=="Resolvida"; }).length;
+      var intervalos = [];
+      for(var i=1;i<datas.length;i++){ intervalos.push(daysBetween(datas[i-1], datas[i])); }
+      var mediaIntervalo = intervalos.length ? Math.round(intervalos.reduce(function(a,b){return a+b;},0)/intervalos.length) : null;
+      return {
+        nome:g.nome, count:g.itens.length, equipamentos:equipamentos,
+        categoriaDominante:categoriaDominante, abertas:abertas,
+        primeiraData: datas[0], ultimaData: datas[datas.length-1],
+        mediaIntervalo: mediaIntervalo, itens:g.itens
+      };
+    });
+    groups.sort(function(a,b){ return b.count-a.count; });
+    return groups;
+  }
+  function uniq(arr){ return arr.filter(function(v,i){ return arr.indexOf(v)===i; }); }
+
+  function computeStats(){
+    var total = state.falhas.length;
+    var recorrentes = computeRecurrenceGroups().filter(function(g){ return g.count>=2; }).length;
+    var resolvidas = state.falhas.filter(function(f){ return f.status==="Resolvida"; }).length;
+    var taxa = total ? Math.round((resolvidas/total)*100) : 0;
+    var abertas = state.falhas.filter(function(f){ return f.status!=="Resolvida"; }).length;
+    return { total:total, recorrentes:recorrentes, taxa:taxa, abertas:abertas };
+  }
+
+  // ---------- Navegação / shell ----------
+  function setTab(id){
+    state.currentTab = id;
+    state.expandedId = null;
+    render();
+  }
+  window.__rca_setTab = setTab;
+
+  function renderSidebar(){
+    var nav = document.getElementById("nav-list");
+    nav.innerHTML = TABS.map(function(t){
+      var count = "";
+      if(t.id==="falhas") count = state.falhas.length;
+      if(t.id==="recorrencias") count = computeRecurrenceGroups().filter(function(g){return g.count>=2;}).length;
+      if(t.id==="acoes") count = state.falhas.filter(function(f){return f.status!=="Resolvida";}).length;
+      return '<li class="nav-item'+(state.currentTab===t.id?" active":"")+'" onclick="__rca_setTab(\''+t.id+'\')">'
+        + t.icon() + '<span>'+t.label+'</span>'
+        + (count!==""? '<span class="nav-count">'+count+'</span>' : '')
+        + '</li>';
+    }).join("");
+    updateStorageBadge();
+  }
+
+  var TAB_META = {
+    painel:["Painel","Visão geral das falhas registradas e do que se repete"],
+    registrar:["Registrar falha","Guia você da descrição do problema até a causa raiz e o plano de ação"],
+    falhas:["Falhas registradas","Todas as ocorrências, com filtros por status, categoria e severidade"],
+    recorrencias:["Recorrências","Falhas do mesmo tipo agrupadas para revelar padrões"],
+    pareto:["Análise de Pareto","Os tipos de falha que concentram a maior parte das ocorrências"],
+    ishikawa:["Diagrama de Ishikawa","Causas registradas organizadas nas 6 famílias (6M)"],
+    acoes:["Ações corretivas","Acompanhamento das ações por status"]
+  };
+
+  function renderTopbar(){
+    var meta = TAB_META[state.currentTab];
+    document.getElementById("topbar-title").textContent = meta[0];
+    document.getElementById("topbar-sub").textContent = meta[1];
+    var action = document.getElementById("topbar-action");
+    if(state.currentTab==="falhas" && state.falhas.length){
+      action.innerHTML = '<button class="btn btn-sm" onclick="__rca_exportCsv()">Exportar CSV</button>';
+    } else if(state.currentTab!=="registrar"){
+      action.innerHTML = '<button class="btn btn-primary btn-sm" onclick="__rca_setTab(\'registrar\')">Registrar falha</button>';
+    } else {
+      action.innerHTML = "";
+    }
+  }
+
+  function render(){
+    renderSidebar();
+    renderTopbar();
+    var el = document.getElementById("content");
+    if(!state.dataLoaded && state.currentTab!=="registrar"){
+      el.innerHTML = '<div class="empty-state"><p>Carregando registros…</p></div>';
+      return;
+    }
+    switch(state.currentTab){
+      case "painel": el.innerHTML = renderPainel(); afterRenderPainel(); break;
+      case "registrar": el.innerHTML = renderRegistrar(); break;
+      case "falhas": el.innerHTML = renderFalhas(); renderFalhasList(); break;
+      case "recorrencias": el.innerHTML = renderRecorrencias(); break;
+      case "pareto": el.innerHTML = renderPareto(); afterRenderPareto(); break;
+      case "ishikawa": el.innerHTML = renderIshikawa(); break;
+      case "acoes": el.innerHTML = renderAcoes(); break;
+    }
+  }
+
+  // ---------- Painel ----------
+  function renderPainel(){
+    var stats = computeStats();
+    if(state.falhas.length===0){
+      return '<div class="empty-state"><p>Nenhuma falha registrada ainda. Comece registrando a primeira ocorrência para o sistema começar a revelar padrões.</p>'
+        + '<button class="btn btn-primary" onclick="__rca_setTab(\'registrar\')">Registrar primeira falha</button></div>';
+    }
+    var top = computeRecurrenceGroups().slice(0,5);
+    var catCounts = {};
+    CATEGORIAS.forEach(function(c){ catCounts[c]=0; });
+    state.falhas.forEach(function(f){ if(catCounts[f.categoria]!==undefined) catCounts[f.categoria]++; });
+
+    return '' +
+    '<div class="stat-grid">' +
+      statCard("Falhas registradas", stats.total, false) +
+      statCard("Tipos recorrentes", stats.recorrentes, true) +
+      statCard("Taxa de resolução", stats.taxa+"%", false) +
+      statCard("Ações em aberto", stats.abertas, false) +
+    '</div>' +
+    '<div class="two-col">' +
+      '<div class="chart-card">' +
+        '<h2>Falhas por categoria (6M)</h2><div class="card-sub">Distribuição das ocorrências entre as famílias do diagrama de Ishikawa</div>' +
+        '<div class="chart-wrap"><canvas id="chart-painel-categoria"></canvas></div>' +
+      '</div>' +
+      '<div class="card">' +
+        '<h2>Top recorrências</h2><div class="card-sub">Tipos de falha com mais ocorrências</div>' +
+        (top.length ? '<ul class="top-recur-list">' + top.map(function(g,i){
+          return '<li class="top-recur-item"><span class="top-recur-rank">'+(i+1)+'</span><span class="top-recur-name">'+escapeHtml(g.nome)+'</span><span class="top-recur-count">'+g.count+'x</span></li>';
+        }).join("") + '</ul>' : '<p class="hint">Ainda não há repetições.</p>') +
+      '</div>' +
+    '</div>';
+  }
+  function statCard(label, value, accent){
+    return '<div class="stat-card"><div class="stat-label">'+label+'</div><div class="stat-value'+(accent?" accent":"")+'" data-count="'+(typeof value==="number"?value:"")+'">'+(typeof value==="number"?"0":value)+'</div></div>';
+  }
+  function afterRenderPainel(){
+    document.querySelectorAll('.stat-value[data-count]').forEach(function(el){
+      var v = el.getAttribute("data-count");
+      if(v!=="") animateNumber(el, parseInt(v,10));
+    });
+    if(state.falhas.length===0) return;
+    var catCounts = {};
+    CATEGORIAS.forEach(function(c){ catCounts[c]=0; });
+    state.falhas.forEach(function(f){ if(catCounts[f.categoria]!==undefined) catCounts[f.categoria]++; });
+    var styles = getComputedStyle(document.documentElement);
+    var accent = styles.getPropertyValue("--accent").trim();
+    var ink = styles.getPropertyValue("--ink-muted").trim();
+    drawChart("chart-painel-categoria", {
+      type:"bar",
+      data:{ labels:CATEGORIAS, datasets:[{ data:CATEGORIAS.map(function(c){return catCounts[c];}), backgroundColor:accent, borderRadius:3, maxBarThickness:36 }] },
+      options: baseChartOptions(ink, false)
+    });
+  }
+
+  // ---------- Registrar (wizard) ----------
+  var WIZARD_STEPS = ["Identificação","Descrição","5 Porquês","Classificação (6M)","Plano de ação","Revisão"];
+
+  window.__rca_wizardField = function(field, value){
+    state.wizard[field] = value;
+  };
+  window.__rca_wizardWhy = function(idx, value){
+    state.wizard.porques[idx] = value;
+  };
+  window.__rca_wizardNext = function(){
+    var errs = validateWizardStep(state.wizardStep);
+    if(errs.length){ renderWizardBody(errs); return; }
+    if(state.wizardStep===3 && !state.wizard.causaRaiz){
+      var lastWhy = state.wizard.porques.slice().reverse().find(function(w){ return w && w.trim(); });
+      if(lastWhy) state.wizard.causaRaiz = lastWhy;
+    }
+    if(state.wizardStep < 6){ state.wizardStep++; render(); }
+  };
+  window.__rca_wizardBack = function(){
+    if(state.wizardStep>1){ state.wizardStep--; render(); }
+  };
+  window.__rca_wizardSubmit = function(){
+    var w = state.wizard;
+    salvarFalha({
+      tipoFalha:w.tipoFalha.trim(), equipamento:w.equipamento.trim(), data:w.data,
+      severidade:w.severidade, descricao:w.descricao.trim(),
+      porques:w.porques.map(function(p){return p.trim();}),
+      categoria:w.categoria, causaRaiz:w.causaRaiz.trim(),
+      acaoCorretiva:w.acaoCorretiva.trim(), responsavel:w.responsavel.trim(),
+      prazo:w.prazo, status:w.status
+    });
+    state.wizard = freshWizard();
+    state.wizardStep = 1;
+    state.currentTab = "falhas";
+    render();
+  };
+
+  function validateWizardStep(step){
+    var w = state.wizard, errs = [];
+    if(step===1){
+      if(!w.tipoFalha.trim()) errs.push("tipoFalha");
+      if(!w.equipamento.trim()) errs.push("equipamento");
+    }
+    if(step===2){
+      if(!w.descricao.trim()) errs.push("descricao");
+    }
+    return errs;
+  }
+
+  function renderRegistrar(){
+    return '<div id="wizard-root">' + wizardBody([]) + '</div>';
+  }
+  function renderWizardBody(errs){
+    document.getElementById("wizard-root").innerHTML = wizardBody(errs);
+  }
+  function wizardBody(errs){
+    errs = errs || [];
+    var w = state.wizard;
+    var progress = '<div class="wizard-progress">' + WIZARD_STEPS.map(function(s,i){
+      return '<span class="'+(i < state.wizardStep ? "done":"")+'"></span>';
+    }).join("") + '</div>';
+    var stepLabel = '<div class="wizard-step-label">Etapa '+state.wizardStep+' de 6 · '+WIZARD_STEPS[state.wizardStep-1]+'</div>';
+    var body = "";
+
+    if(state.wizardStep===1){
+      body = '' +
+        field("Nome ou tipo da falha", "text", "tipoFalha", w.tipoFalha, "Ex.: Vazamento de óleo hidráulico", errs.indexOf("tipoFalha")>=0, "Use um nome curto e consistente — ele é o que permite identificar quando essa falha se repete.") +
+        field("Equipamento ou processo", "text", "equipamento", w.equipamento, "Ex.: Prensa hidráulica 02", errs.indexOf("equipamento")>=0) +
+        '<div class="form-row">' +
+          dateField("Data da ocorrência", "data", w.data) +
+          selectField("Severidade", "severidade", SEVERIDADES, w.severidade) +
+        '</div>';
+    } else if(state.wizardStep===2){
+      body = textareaField("O que aconteceu?", "descricao", w.descricao, "Descreva o sintoma observado, como foi percebido e o impacto imediato.", errs.indexOf("descricao")>=0);
+    } else if(state.wizardStep===3){
+      var labels = [
+        "Por que esse problema aconteceu?",
+        "Por que isso ocorreu?",
+        "Por que essa causa existe?",
+        "Por que essa condição está presente?",
+        "Por que essa é a origem do problema?"
+      ];
+      body = '<p class="hint" style="margin-bottom:16px;">Método dos 5 Porquês: cada resposta parte da anterior, até chegar a uma causa que, se corrigida, evita a repetição.</p>' +
+        w.porques.map(function(val, i){
+          return '<div class="why-block"><div class="why-num" id="why-label-'+i+'">Por quê '+(i+1)+'</div>' +
+            '<input type="text" aria-labelledby="why-label-'+i+'" value="'+escapeHtml(val)+'" placeholder="'+labels[i]+'" oninput="__rca_wizardWhy('+i+', this.value)">' +
+            '</div>';
+        }).join("");
+    } else if(state.wizardStep===4){
+      body = '<div class="form-group"><label for="f-categoria">Categoria (diagrama de Ishikawa — 6M)</label>' +
+        '<select id="f-categoria" onchange="__rca_wizardField(\'categoria\', this.value)">' +
+        CATEGORIAS.map(function(c){ return '<option value="'+c+'"'+(c===w.categoria?" selected":"")+'>'+c+'</option>'; }).join("") +
+        '</select><div class="hint">'+CATEGORIA_DESC[w.categoria]+'</div></div>' +
+        textareaField("Causa raiz identificada", "causaRaiz", w.causaRaiz, "Pré-preenchida com o último \"por quê\" respondido — ajuste se necessário.");
+    } else if(state.wizardStep===5){
+      body = textareaField("Ação corretiva proposta", "acaoCorretiva", w.acaoCorretiva, "O que será feito para eliminar a causa raiz.") +
+        '<div class="form-row">' +
+          field("Responsável", "text", "responsavel", w.responsavel, "Nome ou equipe") +
+          dateField("Prazo", "prazo", w.prazo) +
+        '</div>' +
+        selectField("Status inicial", "status", STATUSES, w.status);
+    } else if(state.wizardStep===6){
+      body = '<dl class="review-grid">' +
+        reviewRow("Tipo de falha", w.tipoFalha) + reviewRow("Equipamento", w.equipamento) +
+        reviewRow("Data", formatDateBR(w.data)) + reviewRow("Severidade", w.severidade) +
+        reviewRow("Descrição", w.descricao) +
+        reviewRow("Categoria (6M)", w.categoria) + reviewRow("Causa raiz", w.causaRaiz || "—") +
+        reviewRow("Ação corretiva", w.acaoCorretiva || "—") + reviewRow("Responsável", w.responsavel || "—") +
+        reviewRow("Prazo", w.prazo?formatDateBR(w.prazo):"—") + reviewRow("Status", w.status) +
+      '</dl>';
+    }
+
+    var actions = '<div class="wizard-actions">' +
+      (state.wizardStep>1 ? '<button class="btn" onclick="__rca_wizardBack()">Voltar</button>' : '<span></span>') +
+      (state.wizardStep<6 ? '<button class="btn btn-primary" onclick="__rca_wizardNext()">Avançar</button>' : '<button class="btn btn-primary" onclick="__rca_wizardSubmit()">Salvar falha</button>') +
+    '</div>';
+
+    return '<div class="card" style="max-width:640px;">' + progress + stepLabel + body + actions + '</div>';
+  }
+  function field(label, type, key, val, placeholder, hasError, hint){
+    var id = "f-"+key;
+    return '<div class="form-group"><label for="'+id+'">'+label+'</label>' +
+      '<input id="'+id+'" type="'+type+'" class="'+(hasError?"field-error":"")+'" value="'+escapeHtml(val)+'" placeholder="'+(placeholder||"")+'" oninput="__rca_wizardField(\''+key+'\', this.value)">' +
+      (hasError?'<div class="error-text">Campo obrigatório.</div>':(hint?'<div class="hint">'+hint+'</div>':"")) +
+      '</div>';
+  }
+  function textareaField(label, key, val, placeholder, hasError){
+    var id = "f-"+key;
+    return '<div class="form-group"><label for="'+id+'">'+label+'</label>' +
+      '<textarea id="'+id+'" class="'+(hasError?"field-error":"")+'" placeholder="'+(placeholder||"")+'" oninput="__rca_wizardField(\''+key+'\', this.value)">'+escapeHtml(val)+'</textarea>' +
+      (hasError?'<div class="error-text">Campo obrigatório.</div>':"") +
+      '</div>';
+  }
+  function selectField(label, key, options, val){
+    var id = "f-"+key;
+    return '<div class="form-group"><label for="'+id+'">'+label+'</label><select id="'+id+'" onchange="__rca_wizardField(\''+key+'\', this.value)">' +
+      options.map(function(o){ return '<option value="'+o+'"'+(o===val?" selected":"")+'>'+o+'</option>'; }).join("") +
+      '</select></div>';
+  }
+  function dateField(label, key, val){
+    var id = "f-"+key;
+    return '<div class="form-group"><label for="'+id+'">'+label+'</label><input id="'+id+'" type="date" value="'+escapeHtml(val)+'" onchange="__rca_wizardField(\''+key+'\', this.value)"></div>';
+  }
+  function reviewRow(k,v){ return '<dt>'+k+'</dt><dd>'+escapeHtml(v)+'</dd>'; }
+
+  // ---------- Falhas registradas ----------
+  window.__rca_setFilter = function(key, value){
+    state.filters[key] = value;
+    renderFalhasList();
+  };
+  window.__rca_toggleExpand = function(id){
+    state.expandedId = state.expandedId===id ? null : id;
+    renderFalhasList();
+  };
+  window.__rca_deleteFalha = function(id){
+    var f = state.falhas.find(function(item){ return item.id===id; });
+    var name = f ? f.tipoFalha : "este registro";
+    if(confirm('Excluir o registro "'+name+'"? Essa ação não pode ser desfeita.')){
+      excluirFalha(id);
+    }
+  };
+  window.__rca_changeStatus = function(id, status){
+    atualizarFalha(id, {status:status});
+  };
+  window.__rca_exportCsv = function(){
+    var rows = [["Tipo de falha","Equipamento","Categoria","Severidade","Data","Descrição","Causa raiz","Ação corretiva","Responsável","Prazo","Status"]];
+    state.falhas.forEach(function(f){
+      rows.push([f.tipoFalha,f.equipamento,f.categoria,f.severidade,f.data,f.descricao,f.causaRaiz,f.acaoCorretiva,f.responsavel,f.prazo,f.status]);
+    });
+    var csv = rows.map(function(r){
+      return r.map(function(cell){
+        var s = String(cell==null?"":cell).replace(/"/g,'""');
+        return '"'+s+'"';
+      }).join(",");
+    }).join("\r\n");
+    if(downloadsNamespace){
+      downloadsNamespace.save({filename:"falhas-registradas.csv", data: csv}).then(function(){
+        showToast("Arquivo salvo.");
+      }).catch(function(e){
+        if(e && e.code!=="declined") showToast("Não foi possível exportar.");
+      });
+    } else {
+      showToast("Exportação indisponível nesta visualização.");
+    }
+  };
+
+  function filteredFalhas(){
+    var f = state.filters;
+    var q = normKey(f.q);
+    return state.falhas.filter(function(item){
+      if(f.status && item.status!==f.status) return false;
+      if(f.categoria && item.categoria!==f.categoria) return false;
+      if(f.severidade && item.severidade!==f.severidade) return false;
+      if(q && normKey(item.tipoFalha).indexOf(q)<0 && normKey(item.equipamento).indexOf(q)<0) return false;
+      return true;
+    });
+  }
+
+  function renderFalhas(){
+    if(state.falhas.length===0){
+      return '<div class="empty-state"><p>Nenhuma falha registrada ainda.</p>' +
+        '<button class="btn btn-primary" onclick="__rca_setTab(\'registrar\')">Registrar primeira falha</button></div>';
+    }
+    return '' +
+      '<div class="filter-bar">' +
+        '<input type="text" aria-label="Buscar por tipo ou equipamento" placeholder="Buscar por tipo ou equipamento" oninput="__rca_setFilter(\'q\', this.value)">' +
+        '<select aria-label="Filtrar por status" onchange="__rca_setFilter(\'status\', this.value)"><option value="">Todos os status</option>' + STATUSES.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join("") + '</select>' +
+        '<select aria-label="Filtrar por categoria" onchange="__rca_setFilter(\'categoria\', this.value)"><option value="">Todas as categorias</option>' + CATEGORIAS.map(function(c){return '<option value="'+c+'">'+c+'</option>';}).join("") + '</select>' +
+        '<select aria-label="Filtrar por severidade" onchange="__rca_setFilter(\'severidade\', this.value)"><option value="">Todas as severidades</option>' + SEVERIDADES.map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join("") + '</select>' +
+        '<span class="filter-count" id="falhas-count"></span>' +
+      '</div>' +
+      '<div id="falhas-list-container"></div>';
+  }
+
+  function renderFalhasList(){
+    var container = document.getElementById("falhas-list-container");
+    if(!container) return;
+    var list = filteredFalhas();
+    var countEl = document.getElementById("falhas-count");
+    if(countEl) countEl.textContent = list.length + (list.length===1?" falha":" falhas");
+    if(list.length===0){
+      container.innerHTML = '<div class="empty-state"><p>Nenhum registro corresponde aos filtros aplicados.</p></div>';
+      return;
+    }
+    container.innerHTML = '<div class="table-wrap"><table><thead><tr>' +
+      '<th>Tipo de falha</th><th>Equipamento</th><th>Categoria</th><th>Severidade</th><th>Data</th><th>Status</th><th></th>' +
+      '</tr></thead><tbody>' +
+      list.map(function(f){
+        var rowHtml = '<tr class="row-clickable" onclick="__rca_toggleExpand(\''+f.id+'\')">' +
+          '<td>'+escapeHtml(f.tipoFalha)+'</td>' +
+          '<td>'+escapeHtml(f.equipamento)+'</td>' +
+          '<td>'+escapeHtml(f.categoria)+'</td>' +
+          '<td><span class="badge '+sevClass(f.severidade)+'">'+f.severidade+'</span></td>' +
+          '<td class="mono">'+formatDateBR(f.data)+'</td>' +
+          '<td><span class="badge '+statusClass(f.status)+'">'+f.status+'</span></td>' +
+          '<td><button class="btn btn-ghost btn-sm btn-danger" onclick="event.stopPropagation(); __rca_deleteFalha(\''+f.id+'\')">Excluir</button></td>' +
+        '</tr>';
+        if(state.expandedId===f.id){
+          rowHtml += '<tr class="detail-row"><td colspan="7"><div class="detail-grid">' +
+            '<div><h4>Descrição</h4><p>'+escapeHtml(f.descricao||"—")+'</p></div>' +
+            '<div><h4>Causa raiz</h4><p>'+escapeHtml(f.causaRaiz||"—")+'</p></div>' +
+            '<div><h4>Método dos 5 porquês</h4>' + renderWhyChain(f.porques) + '</div>' +
+            '<div><h4>Plano de ação</h4><p>'+escapeHtml(f.acaoCorretiva||"—")+'<br><span class="hint">Responsável: '+escapeHtml(f.responsavel||"—")+' · Prazo: '+(f.prazo?formatDateBR(f.prazo):"—")+'</span></p></div>' +
+            '<div><h4>Status</h4><select aria-label="Alterar status" onchange="event.stopPropagation(); __rca_changeStatus(\''+f.id+'\', this.value)" onclick="event.stopPropagation()">' +
+              STATUSES.map(function(s){ return '<option value="'+s+'"'+(s===f.status?" selected":"")+'>'+s+'</option>'; }).join("") +
+            '</select></div>' +
+          '</div></td></tr>';
+        }
+        return rowHtml;
+      }).join("") +
+      '</tbody></table></div>';
+  }
+  function renderWhyChain(porques){
+    var filled = (porques||[]).filter(function(p){return p && p.trim();});
+    if(!filled.length) return '<p class="hint">Não preenchido.</p>';
+    return '<ul class="why-chain">' + filled.map(function(p,i){ return '<li>'+(i+1)+'. '+escapeHtml(p)+'</li>'; }).join("") + '</ul>';
+  }
+
+  // ---------- Recorrências ----------
+  function renderRecorrencias(){
+    var groups = computeRecurrenceGroups();
+    if(groups.length===0){
+      return '<div class="empty-state"><p>Nenhuma falha registrada ainda.</p></div>';
+    }
+    var recorrentes = groups.filter(function(g){return g.count>=2;});
+    var unicas = groups.filter(function(g){return g.count<2;});
+    var html = '';
+    if(recorrentes.length){
+      html += '<h2 style="font-size:13.5px;margin-bottom:12px;">Falhas recorrentes (2 ou mais ocorrências)</h2><div class="recur-grid">' +
+        recorrentes.map(renderRecurCard).join("") + '</div>';
+    } else {
+      html += '<div class="empty-state"><p>Nenhum tipo de falha se repetiu ainda — bom sinal. Continue registrando para acompanhar.</p></div>';
+    }
+    if(unicas.length){
+      html += '<h2 style="font-size:13.5px;margin:24px 0 12px;">Ocorrências únicas até o momento</h2><div class="recur-grid">' +
+        unicas.map(renderRecurCard).join("") + '</div>';
+    }
+    return html;
+  }
+  function renderRecurCard(g){
+    var metaParts = [];
+    if(g.categoriaDominante) metaParts.push(g.categoriaDominante);
+    if(g.equipamentos.length) metaParts.push(g.equipamentos.slice(0,2).join(", ")+(g.equipamentos.length>2?" +"+(g.equipamentos.length-2):""));
+    if(g.mediaIntervalo!=null) metaParts.push("a cada ~"+g.mediaIntervalo+" dias");
+    if(g.abertas) metaParts.push(g.abertas+" ação(ões) em aberto");
+    return '<div class="recur-card"><div>' +
+      '<div class="recur-title">'+escapeHtml(g.nome)+'</div>' +
+      '<div class="recur-meta">'+escapeHtml(metaParts.join(" · "))+'</div>' +
+      '<div class="recur-meta">Última ocorrência: '+formatDateBR(g.ultimaData)+'</div>' +
+      '</div><div><div class="recur-count-badge">'+g.count+'</div><div class="recur-count-label">ocorrências</div></div></div>';
+  }
+
+  // ---------- Pareto ----------
+  function computeParetoData(){
+    var groups = computeRecurrenceGroups();
+    var total = groups.reduce(function(s,g){return s+g.count;},0);
+    var top = groups.slice(0,12);
+    var cum = 0;
+    return top.map(function(g){
+      cum += g.count;
+      return { nome:g.nome, count:g.count, cumPct: total? Math.round((cum/total)*1000)/10 : 0 };
+    });
+  }
+  function renderPareto(){
+    if(state.falhas.length===0){
+      return '<div class="empty-state"><p>Registre algumas falhas para ver a análise de Pareto.</p></div>';
+    }
+    return '<div class="chart-card"><h2>Falhas por tipo, em ordem decrescente</h2>' +
+      '<div class="card-sub">A linha mostra o percentual acumulado — a régua tracejada marca os 80%, a faixa que costuma concentrar as poucas causas mais relevantes.</div>' +
+      '<div class="chart-wrap"><canvas id="chart-pareto"></canvas></div></div>';
+  }
+  function afterRenderPareto(){
+    var data = computeParetoData();
+    var styles = getComputedStyle(document.documentElement);
+    var accent = styles.getPropertyValue("--accent").trim();
+    var teal = styles.getPropertyValue("--status-andamento").trim();
+    var faint = styles.getPropertyValue("--ink-faint").trim();
+    var ink = styles.getPropertyValue("--ink-muted").trim();
+    drawChart("chart-pareto", {
+      data:{
+        labels: data.map(function(d){return d.nome;}),
+        datasets:[
+          { type:"bar", label:"Ocorrências", data:data.map(function(d){return d.count;}), backgroundColor:accent, borderRadius:3, yAxisID:"y", order:2 },
+          { type:"line", label:"Acumulado (%)", data:data.map(function(d){return d.cumPct;}), borderColor:teal, backgroundColor:teal, yAxisID:"y1", tension:0.25, pointRadius:3, order:1 },
+          { type:"line", label:"80%", data:data.map(function(){return 80;}), borderColor:faint, borderDash:[5,4], pointRadius:0, yAxisID:"y1", order:0 }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:"index", intersect:false},
+        plugins:{ legend:{ position:"bottom", labels:{color:ink, boxWidth:12, font:{family:"IBM Plex Sans", size:11.5}} } },
+        scales:{
+          x:{ ticks:{color:ink, font:{family:"IBM Plex Sans", size:11}}, grid:{display:false} },
+          y:{ position:"left", ticks:{color:ink, font:{family:"IBM Plex Mono", size:11}}, grid:{color:"rgba(128,128,128,.15)"}, title:{display:true,text:"Ocorrências",color:ink} },
+          y1:{ position:"right", min:0, max:100, ticks:{color:ink, font:{family:"IBM Plex Mono", size:11}}, grid:{display:false}, title:{display:true,text:"% acumulado",color:ink} }
+        }
+      }
+    });
+  }
+
+  function baseChartOptions(inkColor){
+    return {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{color:inkColor, font:{family:"IBM Plex Sans", size:11}}, grid:{display:false} },
+        y:{ beginAtZero:true, ticks:{color:inkColor, precision:0, font:{family:"IBM Plex Mono", size:11}}, grid:{color:"rgba(128,128,128,.15)"} }
+      }
+    };
+  }
+  function drawChart(canvasId, config){
+    var canvas = document.getElementById(canvasId);
+    if(!canvas || typeof Chart==="undefined") return;
+    if(chartInstances[canvasId]) chartInstances[canvasId].destroy();
+    config.type = config.type || "bar";
+    chartInstances[canvasId] = new Chart(canvas.getContext("2d"), config);
+  }
+
+  // ---------- Ishikawa ----------
+  var BONES = [
+    {cat:"Método", side:"top", x:170},
+    {cat:"Mão de obra", side:"top", x:350},
+    {cat:"Máquina", side:"top", x:530},
+    {cat:"Material", side:"bottom", x:170},
+    {cat:"Meio ambiente", side:"bottom", x:350},
+    {cat:"Medição", side:"bottom", x:530}
+  ];
+  function computeIshikawaData(){
+    var byCategoria = {};
+    CATEGORIAS.forEach(function(c){ byCategoria[c] = {}; });
+    state.falhas.forEach(function(f){
+      if(!f.causaRaiz || !byCategoria[f.categoria]) return;
+      var key = f.causaRaiz.trim();
+      if(!key) return;
+      byCategoria[f.categoria][key] = (byCategoria[f.categoria][key]||0)+1;
+    });
+    var result = {};
+    CATEGORIAS.forEach(function(c){
+      var arr = Object.keys(byCategoria[c]).map(function(k){ return {texto:k, count:byCategoria[c][k]}; });
+      arr.sort(function(a,b){ return b.count-a.count; });
+      result[c] = arr;
+    });
+    return result;
+  }
+  function truncate(s, n){ return s.length>n ? s.slice(0,n-1)+"…" : s; }
+
+  function renderIshikawa(){
+    if(state.falhas.length===0){
+      return '<div class="empty-state"><p>Registre falhas com causa raiz definida para gerar o diagrama.</p></div>';
+    }
+    var data = computeIshikawaData();
+    var W = 720, H = 400, spineY = 200, spineXStart = 620, spineXEnd = 60;
+    var svg = '<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de Ishikawa">';
+    svg += '<line x1="'+spineXEnd+'" y1="'+spineY+'" x2="'+spineXStart+'" y2="'+spineY+'" stroke="var(--ink)" stroke-width="1.6"/>';
+    svg += '<polygon points="'+spineXStart+','+(spineY-7)+' '+(spineXStart+14)+','+spineY+' '+spineXStart+','+(spineY+7)+'" fill="var(--ink)"/>';
+    svg += '<rect x="'+(spineXStart+16)+'" y="'+(spineY-22)+'" width="88" height="44" rx="5" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.3"/>';
+    svg += '<text x="'+(spineXStart+60)+'" y="'+(spineY+5)+'" text-anchor="middle" font-family="IBM Plex Sans" font-size="12" font-weight="600" fill="var(--accent-ink)">Falha</text>';
+
+    BONES.forEach(function(b){
+      var tipY = b.side==="top" ? 60 : 340;
+      var joinX = b.x + 80;
+      svg += '<line x1="'+b.x+'" y1="'+tipY+'" x2="'+joinX+'" y2="'+spineY+'" stroke="var(--ink-muted)" stroke-width="1.3"/>';
+      var labelY = b.side==="top" ? tipY-10 : tipY+18;
+      svg += '<text x="'+b.x+'" y="'+labelY+'" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="var(--ink)">'+escapeHtml(b.cat)+'</text>';
+      var causes = data[b.cat].slice(0,4);
+      var extra = data[b.cat].length - causes.length;
+      var listY = b.side==="top" ? tipY+8 : tipY-14;
+      var lineHeight = 15;
+      causes.forEach(function(c, i){
+        var y = b.side==="top" ? listY + i*lineHeight : listY - (causes.length-1-i)*lineHeight;
+        var label = truncate(c.texto, 30) + (c.count>1 ? " ("+c.count+"x)" : "");
+        svg += '<text x="'+b.x+'" y="'+y+'" font-family="IBM Plex Mono" font-size="10.5" fill="var(--ink-muted)">'+escapeHtml(label)+'</text>';
+      });
+      if(causes.length===0){
+        var y0 = b.side==="top" ? listY : listY;
+        svg += '<text x="'+b.x+'" y="'+y0+'" font-family="IBM Plex Mono" font-size="10.5" fill="var(--ink-faint)">nenhuma causa registrada</text>';
+      } else if(extra>0){
+        var yE = b.side==="top" ? listY + causes.length*lineHeight : listY - causes.length*lineHeight;
+        svg += '<text x="'+b.x+'" y="'+yE+'" font-family="IBM Plex Mono" font-size="10.5" fill="var(--ink-faint)">+'+extra+' mais</text>';
+      }
+    });
+    svg += '</svg>';
+    return '<div class="fishbone-wrap grid-paper">'+svg+'</div>' +
+      '<p class="hint" style="margin-top:12px;">Gerado a partir da causa raiz e da categoria (6M) de cada falha registrada. Causas repetidas mostram quantas vezes apareceram.</p>';
+  }
+
+  // ---------- Ações corretivas ----------
+  window.__rca_advanceStatus = function(id, current){
+    var idx = STATUSES.indexOf(current);
+    if(idx < STATUSES.length-1){ atualizarFalha(id, {status: STATUSES[idx+1]}); }
+  };
+  function renderAcoes(){
+    if(state.falhas.length===0){
+      return '<div class="empty-state"><p>Nenhuma ação registrada ainda.</p></div>';
+    }
+    var today = todayISO();
+    return '<div class="kanban">' + STATUSES.map(function(status){
+      var items = state.falhas.filter(function(f){ return f.status===status; });
+      return '<div class="kanban-col"><h3><span class="badge '+statusClass(status)+'">'+status+'</span><span class="hint">'+items.length+'</span></h3>' +
+        (items.length ? items.map(function(f){
+          var overdue = f.prazo && f.prazo < today && status!=="Resolvida";
+          return '<div class="kanban-card">' +
+            '<div class="kanban-card-title">'+escapeHtml(f.tipoFalha)+'</div>' +
+            '<div class="kanban-card-action">'+escapeHtml(f.acaoCorretiva || "Sem ação corretiva definida")+'</div>' +
+            '<div class="kanban-card-meta'+(overdue?" overdue":"")+'"><span>'+escapeHtml(f.responsavel||"—")+'</span><span>'+(f.prazo?formatDateBR(f.prazo):"sem prazo")+(overdue?" · atrasado":"")+'</span></div>' +
+            (status!=="Resolvida" ? '<div class="kanban-card-actions"><button class="btn btn-sm" onclick="__rca_advanceStatus(\''+f.id+'\', \''+status+'\')">Avançar status</button></div>' : '') +
+          '</div>';
+        }).join("") : '<p class="hint">Nada por aqui.</p>') +
+      '</div>';
+    }).join("") + '</div>';
+  }
+
+  // ---------- Inicialização ----------
+  document.addEventListener("DOMContentLoaded", function(){
+    render();
+    initStorage();
+  });
+})();
+</script>
+</body>
+</html>
